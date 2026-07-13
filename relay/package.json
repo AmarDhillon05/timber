@@ -1,0 +1,10 @@
+{
+  "name": "timber-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SSE middleman routing media-control commands from the controller to the Timber desktop.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

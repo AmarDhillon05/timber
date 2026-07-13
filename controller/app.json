@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "Timber Remote",
+    "slug": "timber-controller",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0f172a",
+    "web": { "bundler": "metro" }
+  }
+}

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Timber recorder, Windows implementation. `dotnet run` is enough; see
+       ../README.md for the protocol it shares with recorder/linux. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Windows-flavoured target so the WinRT projections are available: media
+         control (MediaControl.cs) needs Windows.Media.Control / SMTC, which
+         plain net8.0 can't see. 10.0.19041.0 is the SDK that ships GSMTC; the
+         app still RUNS on any Windows 10 1809+ (see SupportedOSPlatformVersion). -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>TimberRecorder</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WASAPI loopback capture (WasapiLoopbackCapture). -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+
+</Project>
