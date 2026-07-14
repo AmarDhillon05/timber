@@ -13,6 +13,7 @@ import { useController } from '../controller/store';
 import { useRemoteTake } from '../controller/useRemoteTake';
 import { createVideoRecorder } from '../media/videoRecorder';
 import type { VideoRecorder } from '../media/videoRecorder';
+import { listProjects } from '../media/savedProjects';
 import { AudioFile } from '../dsp';
 import { makeTrack, makeTrackFile } from '../data/TrackFile';
 import { useSession } from '../state/session';
@@ -50,6 +51,10 @@ interface TakeSource {
 }
 
 interface Take {
+  /** Display name, and the name the TrackFile carries: "Take 3". */
+  name: string;
+  /** Folder the take's media live in — `take-3` on web (a label; the browser
+   *  has no durable FS), the take folder's uri on native. */
   dir: string;
   /** null while the camera is a placeholder (no video captured yet). */
   video: string | null;
@@ -57,6 +62,40 @@ interface Take {
   audio: TakeSource[];
   /** Seconds into the recording at which system-audio capture began (~0). */
   musicOffsetSec: number;
+}
+
+// Takes are NUMBERED, and the number comes from what is already stored rather
+// than from a counter in memory: a reload restarts a counter at 1, and since a
+// project saves into slug(its name), take 1 would then be written straight over
+// the take 1 already on disk. (That is the bug this replaced — every web take
+// was called "(in-memory)", so every save landed in saved_data/in-memory and
+// clobbered the one before it.) Each platform counts its own durable store:
+// web asks the saver for the projects it holds, native reads the take folders
+// it wrote itself. Unsaved takes reserve no number — nothing is stored, so
+// there is nothing to collide with.
+const TAKE_DIR = /^take-(\d+)$/;
+
+async function nextTakeNumber(): Promise<number> {
+  let dirs: string[];
+  try {
+    if (Platform.OS === 'web') {
+      dirs = (await listProjects()).map((p) => p.dir);
+    } else {
+      const recordings = new Directory(Paths.document, 'recordings');
+      dirs = recordings.exists ? recordings.list().map((entry) => entry.name) : [];
+    }
+  } catch {
+    // The capture is already in hand. A take is not lost because the store it
+    // would have been numbered against couldn't be read (saver down, say), so
+    // fall back to a stamp — unique, which is the one thing the number is for.
+    return Date.now();
+  }
+  let highest = 0;
+  for (const dir of dirs) {
+    const match = TAKE_DIR.exec(dir);
+    if (match) highest = Math.max(highest, Number(match[1]));
+  }
+  return highest + 1;
 }
 
 export default function RecordScreen({ onDone }: { onDone: () => void }) {
@@ -256,17 +295,25 @@ export default function RecordScreen({ onDone }: { onDone: () => void }) {
 
     if (!drums || !music) return;
 
-    // Native has a durable filesystem: move the captured files into a take
+    // Every take gets its own folder, named for its number. `saveProject` slugs
+    // the TrackFile's name to pick the folder it writes into, and slug("Take 3")
+    // is "take-3" — so the take folder here and the saved_data folder later are
+    // the same name by construction, and re-saving a take overwrites that take
+    // rather than some other one.
+    const number = await nextTakeNumber();
+    const name = `Take ${number}`;
+
+    // Native has a durable filesystem: move the captured files into the take
     // folder and write a manifest. Web keeps the in-memory object URLs as-is
-    // (there's no durable FS in the browser/Electron renderer).
-    let dir = '(in-memory)';
+    // (there's no durable FS in the browser/Electron renderer), so its folder
+    // is just the name the media will be saved under.
+    let dir = `take-${number}`;
     let drumsUri = drums.uri;
     let videoUri = video?.uri ?? null;
     let folder: Directory | null = null;
 
     if (Platform.OS !== 'web') {
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      folder = new Directory(Paths.document, 'recordings', stamp);
+      folder = new Directory(Paths.document, 'recordings', dir);
       folder.create({ intermediates: true, idempotent: true });
 
       const drumsDest = new File(folder, `drums${drums.ext}`);
@@ -298,6 +345,7 @@ export default function RecordScreen({ onDone }: { onDone: () => void }) {
     ];
 
     const result: Take = {
+      name,
       dir,
       video: videoUri,
       audio,
@@ -330,7 +378,7 @@ export default function RecordScreen({ onDone }: { onDone: () => void }) {
       makeTrack({ name: src.name, uri: src.uri, editable: true }),
     );
     const file = makeTrackFile({
-      name: take.dir.split('/').pop() || 'Take',
+      name: take.name,
       tracks,
       video: take.video
         ? { uri: take.video, name: take.video.split('/').pop() ?? 'video' }
@@ -441,7 +489,7 @@ export default function RecordScreen({ onDone }: { onDone: () => void }) {
           {take && (
             <View style={styles.result}>
               <Text style={styles.resultTitle}>
-                Take saved · {take.audio.length + (take.video ? 1 : 0)} tracks
+                {take.name} · {take.audio.length + (take.video ? 1 : 0)} tracks
               </Text>
               {take.video && (
                 <Text style={styles.resultLine}>

@@ -42,11 +42,35 @@
 #   ./scripts/run-dev.sh --recorder-port 9790 # move the recorder sidecar off 8790
 #   ./scripts/run-dev.sh --saver-port 9791 # move the saver sidecar off 8791
 #   ./scripts/run-dev.sh --saved-data ~/timber-projects # where projects are saved
+#   ./scripts/run-dev.sh --hotspot         # laptop IS the network; phone joins it
+#   ./scripts/run-dev.sh --hotspot-off     # tear that down, restore the old Wi-Fi
 #
 # --lan auto-detects this machine's LAN IP and points ONLY the controller at
 # it, so a phone on the same Wi-Fi can reach the relay. The app + relay stay
 # on localhost (they share this machine). If the detected IP is wrong, set
 # EXPO_PUBLIC_RELAY_URL yourself in the controller window.
+#
+# --hotspot is --lan with no Wi-Fi network at all: NetworkManager puts the
+# wireless card into AP mode, the phone joins THAT, and the controller is wired
+# to the laptop's address on it. Two devices, a router nowhere in sight — for
+# recording somewhere with no infrastructure. Implies --lan. It also runs the
+# backend with HF_HUB_OFFLINE=1, since a warm HuggingFace cache still tries to
+# revalidate against a hub it now cannot reach (see scripts/preload-models.py,
+# which fetches the weights and proves they load with the network off — run it
+# ONCE while you still have internet).
+#
+# The AP outlives this script on purpose: the panes are backgrounded and the
+# script returns, so tearing down on exit would kill the network the moment it
+# came up. --hotspot-off puts it away and restores whatever Wi-Fi you were on.
+#
+# Taking the radio also takes this machine's internet, so `npm install` and any
+# model download must already have happened. Deps are installed BEFORE the AP
+# comes up for that reason.
+#
+# Phone-mic sharing does NOT work over the hotspot and the controller disables
+# its mic button there: a browser only grants getUserMedia to a secure context,
+# and the controller is served over plain http. Take control, transport buttons
+# and pairing all work. Serving the relay over HTTPS is what unlocks the mic.
 #
 # Each pane opens in a new window of whatever terminal emulator is found
 # (gnome-terminal, konsole, xfce4-terminal, tilix, terminator, kitty,
@@ -57,6 +81,11 @@
 set -euo pipefail
 
 lan=0
+hotspot=0
+hotspot_off=0
+hotspot_ssid="timber"
+hotspot_pass="timber-take" # NetworkManager requires 8+ chars for WPA
+bg_sidecars=0
 backend=1
 web=0
 relay_port=8787
@@ -70,6 +99,15 @@ saved_data="${SAVED_DATA_DIR:-}" # empty → <repo>/saved_data, resolved below
 while [ $# -gt 0 ]; do
   case "$1" in
     --lan) lan=1; shift ;;
+    # --hotspot is --lan whose network happens to be this laptop, so it turns
+    # --lan on and only replaces where the IP comes from.
+    --hotspot) hotspot=1; lan=1; shift ;;
+    --hotspot-off) hotspot_off=1; shift ;;
+    --hotspot-ssid) hotspot_ssid="$2"; shift 2 ;;
+    --hotspot-ssid=*) hotspot_ssid="${1#*=}"; shift ;;
+    --hotspot-pass) hotspot_pass="$2"; shift 2 ;;
+    --hotspot-pass=*) hotspot_pass="${1#*=}"; shift ;;
+    --bg-sidecars) bg_sidecars=1; shift ;;
     --backend) backend=1; shift ;;
     --no-backend) backend=0; shift ;;
     --web) web=1; shift ;;
@@ -88,7 +126,9 @@ while [ $# -gt 0 ]; do
     --saved-data) saved_data="$2"; shift 2 ;;
     --saved-data=*) saved_data="${1#*=}"; shift ;;
     -h|--help)
-      sed -n '2,49p' "$0" | sed 's/^# \{0,1\}//'
+      # Everything from line 2 up to the first non-comment line, so the header
+      # IS the help text and can't drift out of sync with a hardcoded range.
+      awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$0"
       exit 0
       ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
@@ -96,6 +136,89 @@ while [ $# -gt 0 ]; do
 done
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# --- Hotspot -----------------------------------------------------------------
+#
+# The AP is a NetworkManager connection, so bringing it up REPLACES whatever
+# Wi-Fi this card was on. We record both names — the AP's and the one we
+# displaced — because the script exits while the stack keeps running, so
+# teardown can't be a trap here; it has to be a thing you can run later
+# (--hotspot-off) against state that survived the exit.
+hotspot_state="$root/scripts/logs/hotspot.state"
+
+wifi_iface() {
+  nmcli -t -f DEVICE,TYPE device 2>/dev/null | awk -F: '$2=="wifi" { print $1; exit }'
+}
+
+# Name of the connection currently active on $1, if any.
+active_con_on() {
+  nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null |
+    awk -F: -v dev="$1" '$2==dev { print $1; exit }'
+}
+
+hotspot_up() {
+  command -v nmcli >/dev/null 2>&1 || {
+    echo "--hotspot needs nmcli (NetworkManager), which isn't installed." >&2
+    exit 1
+  }
+
+  local iface prev con ip tries
+  iface="$(wifi_iface)"
+  [ -n "$iface" ] || { echo "--hotspot: no Wi-Fi device found." >&2; exit 1; }
+
+  # Not every card can be an access point, and the failure if it can't is a
+  # cryptic nmcli error — so ask the driver first and say the useful thing.
+  if command -v iw >/dev/null 2>&1 && ! iw list 2>/dev/null | grep -qE '^[[:space:]]+\* AP$'; then
+    echo "--hotspot: this Wi-Fi card doesn't report AP mode; it can't host a network." >&2
+    exit 1
+  fi
+
+  prev="$(active_con_on "$iface")"
+
+  echo "Bringing up hotspot '$hotspot_ssid' on $iface (this drops your current Wi-Fi)..."
+  if ! nmcli device wifi hotspot ifname "$iface" ssid "$hotspot_ssid" \
+       password "$hotspot_pass" >/dev/null; then
+    echo "--hotspot: nmcli couldn't start the AP." >&2
+    exit 1
+  fi
+
+  con="$(active_con_on "$iface")"
+  mkdir -p "$(dirname "$hotspot_state")"
+  printf '%s\n%s\n' "$con" "$prev" >"$hotspot_state"
+
+  # The shared-mode address (10.42.0.1/24 as a rule, but read it rather than
+  # assume it — this is the address the phone will be told to talk to).
+  for tries in 1 2 3 4 5; do
+    ip="$(nmcli -g IP4.ADDRESS device show "$iface" 2>/dev/null | head -n1 | cut -d/ -f1)"
+    [ -n "$ip" ] && break
+    sleep 1
+  done
+  [ -n "$ip" ] || { echo "--hotspot: AP is up but has no IPv4 address yet." >&2; exit 1; }
+
+  ap_ip="$ip"
+}
+
+hotspot_down() {
+  local con prev
+  [ -f "$hotspot_state" ] || { echo "No hotspot recorded as up — nothing to do."; return 0; }
+  { read -r con; read -r prev; } <"$hotspot_state" || true
+
+  [ -n "${con:-}" ] && nmcli connection down "$con" >/dev/null 2>&1 &&
+    echo "Hotspot '$con' down."
+  if [ -n "${prev:-}" ]; then
+    if nmcli connection up "$prev" >/dev/null 2>&1; then
+      echo "Reconnected to '$prev'."
+    else
+      echo "Couldn't rejoin '$prev' automatically — pick your Wi-Fi from the menu." >&2
+    fi
+  fi
+  rm -f "$hotspot_state"
+}
+
+if [ "$hotspot_off" -eq 1 ]; then
+  hotspot_down
+  exit 0
+fi
 
 # The saver's root — where projects are saved to AND opened from. Created up
 # front so the sidecar's listing has a folder to read on a fresh checkout.
@@ -150,8 +273,25 @@ detect_lan_ip() {
   echo "$ip"
 }
 
+# Install deps where missing (relay has none, but this creates node_modules).
+# BEFORE the hotspot: putting the card into AP mode takes this machine off the
+# internet, and npm can't install from a network of one.
+for d in relay controller mobile; do
+  if [ ! -d "$root/$d/node_modules" ]; then
+    echo "Installing deps in $d ..."
+    (cd "$root/$d" && npm install)
+  fi
+done
+
+# The hotspot is the network the phone will be on, so its address is the one the
+# controller has to be told about — same wiring as --lan, different source for
+# the IP. Nothing else moves: app, relay and sidecars stay on localhost, because
+# they were always on the same box as each other.
+ap_ip=""
+[ "$hotspot" -eq 1 ] && hotspot_up
+
 if [ "$lan" -eq 1 ]; then
-  lan_ip="$(detect_lan_ip)"
+  lan_ip="${ap_ip:-$(detect_lan_ip)}"
   if [ -z "$lan_ip" ]; then
     echo "Could not auto-detect a LAN IP; set EXPO_PUBLIC_RELAY_URL manually." >&2
     exit 1
@@ -161,14 +301,6 @@ if [ "$lan" -eq 1 ]; then
 else
   controller_relay="$app_relay"
 fi
-
-# Install deps where missing (relay has none, but this creates node_modules).
-for d in relay controller mobile; do
-  if [ ! -d "$root/$d/node_modules" ]; then
-    echo "Installing deps in $d ..."
-    (cd "$root/$d" && npm install)
-  fi
-done
 
 # Find a terminal emulator to open each pane in its own window.
 term_cmd=""
@@ -180,6 +312,15 @@ for t in gnome-terminal konsole xfce4-terminal tilix terminator kitty alacritty 
 done
 
 mkdir -p "$root/scripts/logs"
+
+# Run detached, output to a log. Two callers want this: a headless box with no
+# terminal emulator to open, and --bg-sidecars, which wants it on purpose.
+start_bg() {
+  local title="$1" body="$2" logfile
+  logfile="$root/scripts/logs/$(echo "$title" | tr '[:upper:] ' '[:lower:]-').log"
+  bash -c "$body" >"$logfile" 2>&1 &
+  echo "  $title — background (PID $!), log: $logfile"
+}
 
 # Launch one pane. $2 is a full shell command string (already includes cd/env).
 start_pane() {
@@ -197,26 +338,35 @@ start_pane() {
     x-terminal-emulator) x-terminal-emulator -T "$title" -e bash -c "$full" & ;;
     xterm) xterm -T "$title" -e bash -c "$full" & ;;
     "")
-      local logfile
-      logfile="$root/scripts/logs/$(echo "$title" | tr '[:upper:] ' '[:lower:]-').log"
-      bash -c "$body" >"$logfile" 2>&1 &
-      echo "No terminal emulator found — '$title' running in background (PID $!), logging to $logfile"
+      echo "No terminal emulator found — '$title' runs detached instead."
+      start_bg "$title" "$body"
       ;;
   esac
 }
 
+# The four processes you never actually watch (relay, recorder, saver, backend).
+# --bg-sidecars sends them to logs so the only windows that open are the two you
+# look at: the app and the controller.
+start_sidecar() {
+  if [ "$bg_sidecars" -eq 1 ]; then
+    start_bg "$1" "$2"
+  else
+    start_pane "$1" "$2"
+  fi
+}
+
 # 1. Relay — the pairing middleman. RELAY_PORT is the single source of truth;
 #    the app/controller URLs above are built from the same $relay_port.
-start_pane "Timber relay" "cd '$root/relay' && RELAY_PORT='$relay_port' npm start"
+start_sidecar "Timber relay" "cd '$root/relay' && RELAY_PORT='$relay_port' npm start"
 
 # 1b. Recorder — the system-audio sidecar (recorder/README.md). Zero-dep node,
 #     so no install step; the app's EXPO_PUBLIC_RECORDER_URL points at it below.
-start_pane "Timber recorder" "cd '$root/recorder/linux' && RECORDER_PORT='$recorder_port' node server.js"
+start_sidecar "Timber recorder" "cd '$root/recorder/linux' && RECORDER_PORT='$recorder_port' node server.js"
 
 # 1c. Saver — the project-persistence sidecar (saver/README.md). Zero-dep
 #     node; SAVED_DATA_DIR is the one folder it saves into and lists from, so
 #     it backs both the editor's Save and the app's "Open a saved project".
-start_pane "Timber saver" "cd '$root/saver' && SAVER_PORT='$saver_port' SAVED_DATA_DIR='$saved_data' node server.js"
+start_sidecar "Timber saver" "cd '$root/saver' && SAVER_PORT='$saver_port' SAVED_DATA_DIR='$saved_data' node server.js"
 
 # 2. App (receiver). EXPO_PUBLIC_INFERENCE_URL follows the backend port so a
 #    bumped/overridden backend is still found (harmless when it isn't started).
@@ -262,10 +412,31 @@ start_pane "Timber controller" "cd '$root/controller' && EXPO_PUBLIC_RELAY_URL='
 app_mode="electron"
 [ "$web" -eq 1 ] && app_mode="web"
 if [ "$backend" -eq 1 ]; then
-  start_pane "Timber backend" "cd '$root' && if [ -f .venv/bin/activate ]; then . .venv/bin/activate; fi; uvicorn inference.api:app --reload --port $backend_port"
+  # On the hotspot there is no hub to reach, and a warm HuggingFace cache will
+  # still try — hanging the first suggestion on a DNS timeout before it falls
+  # back to disk. HF_HUB_OFFLINE=1 tells it not to bother. It only works because
+  # the weights are already there; scripts/preload-models.py is what puts them
+  # there, and it verifies exactly this load path.
+  hf_env=""
+  [ "$hotspot" -eq 1 ] && hf_env="HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 "
+  start_sidecar "Timber backend" "cd '$root' && if [ -f .venv/bin/activate ]; then . .venv/bin/activate; fi; ${hf_env}uvicorn inference.api:app --reload --port $backend_port"
   echo "Launched relay (:$relay_port), recorder (:$recorder_port), saver (:$saver_port), app (:$app_port, $app_mode), controller (:$controller_port), backend (:$backend_port)."
 else
   echo "Launched relay (:$relay_port), recorder (:$recorder_port), saver (:$saver_port), app (:$app_port, $app_mode), controller (:$controller_port). Backend skipped (--no-backend)."
 fi
 echo "Projects save to and open from: $saved_data"
 echo "Pair: open the remote screen in the app, enter the shown code in the controller."
+
+if [ "$hotspot" -eq 1 ]; then
+  echo
+  echo "Hotspot up — this laptop IS the network."
+  echo "  join on the phone   Wi-Fi '$hotspot_ssid', password '$hotspot_pass'"
+  echo "  controller          http://${ap_ip}:${controller_port}"
+  echo "  relay it talks to   ${controller_relay}"
+  echo "  backend             offline (HF_HUB_OFFLINE=1)"
+  echo "  phone mic           disabled — needs HTTPS; take control works"
+  echo
+  echo "iOS will say 'No Internet Connection'; that's correct, ignore it. Turn"
+  echo "auto-join off for other networks or the phone may wander off this one."
+  echo "When you're done:  ./scripts/run-dev.sh --hotspot-off"
+fi

@@ -39,6 +39,21 @@ const MIC_LABEL: Record<string, string> = {
   streaming: 'REC — streaming mic to desktop…',
 };
 
+// Sharing the phone's mic needs getUserMedia, and a browser only hands that out
+// to a SECURE CONTEXT — iOS Safari strictly so. Served off the laptop's hotspot
+// the controller is a plain http:// origin (localhost is exempt; a LAN address
+// is not), so on a real phone `navigator.mediaDevices` is simply undefined and
+// no amount of tapping can produce a mic. Disable the toggle there and say why,
+// rather than let it fail on tap.
+//
+// The gate is the capability itself, not a flag, so nothing here needs undoing:
+// serve the relay and controller over HTTPS with a cert the phone trusts and the
+// button lights up on its own. The streaming path in ./store is untouched either
+// way — it only ever runs after enableMic().
+const MIC_SUPPORTED =
+  typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
+const MIC_UNAVAILABLE = 'Phone mic needs HTTPS — take control still works';
+
 export function ControllerScreen() {
   const { status, mic, taking, error, confirm, send, enableMic, disableMic, unpair } =
     useController();
@@ -123,8 +138,8 @@ export function ControllerScreen() {
           </View>
 
           {/* Connected info: pairing status, the mic share toggle (tint tracks
-              its state: idle card, green when shared, red while streaming),
-              and disconnect. */}
+              its state: idle card, green when shared, red while streaming, and
+              dimmed where the origin can't grant a mic at all), and disconnect. */}
           <View style={styles.info}>
             <Text style={styles.infoStatus}>Connected to desktop</Text>
             {/* Send/mic failures land here (the store never throws at the UI). */}
@@ -134,10 +149,14 @@ export function ControllerScreen() {
                 styles.micBtn,
                 mic === 'ready' && styles.micBtnReady,
                 mic === 'streaming' && styles.micBtnStreaming,
+                !MIC_SUPPORTED && styles.micBtnOff,
               ]}
+              disabled={!MIC_SUPPORTED}
               onPress={() => void (mic === 'off' ? enableMic() : disableMic())}
             >
-              <Text style={styles.micText}>{MIC_LABEL[mic]}</Text>
+              <Text style={[styles.micText, !MIC_SUPPORTED && styles.micTextOff]}>
+                {MIC_SUPPORTED ? MIC_LABEL[mic] : MIC_UNAVAILABLE}
+              </Text>
             </Pressable>
             <Pressable style={styles.linkBtn} onPress={unpair}>
               <Text style={styles.linkText}>Disconnect</Text>
@@ -258,5 +277,7 @@ const styles = StyleSheet.create({
   },
   micBtnReady: { backgroundColor: theme.successDeep },
   micBtnStreaming: { backgroundColor: theme.dangerDeep },
+  micBtnOff: { opacity: 0.6 },
   micText: { color: theme.text, fontSize: 15, fontWeight: '600', textAlign: 'center' },
+  micTextOff: { color: theme.textFaint, fontWeight: '400' },
 });
