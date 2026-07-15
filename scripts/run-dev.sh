@@ -85,6 +85,11 @@ hotspot=0
 hotspot_off=0
 hotspot_ssid="timber"
 hotspot_pass="timber-take" # NetworkManager requires 8+ chars for WPA
+# Pin the laptop's own address on its hotspot. Shared mode picks 10.42.0.1 on
+# its own, but a DOWNLOADED phone build has its relay URL frozen at build time,
+# so it can only ever find this laptop if the laptop is always at the same spot.
+# Nailing it here removes the "on its own" and makes that frozen URL a promise.
+hotspot_ip="10.42.0.1"
 bg_sidecars=0
 backend=1
 web=0
@@ -186,8 +191,15 @@ hotspot_up() {
   mkdir -p "$(dirname "$hotspot_state")"
   printf '%s\n%s\n' "$con" "$prev" >"$hotspot_state"
 
-  # The shared-mode address (10.42.0.1/24 as a rule, but read it rather than
-  # assume it — this is the address the phone will be told to talk to).
+  # Pin that connection to $hotspot_ip and re-apply, so the address below is a
+  # choice rather than a guess. Best-effort: if the modify fails we still fall
+  # through to reading whatever address shared mode did assign.
+  nmcli connection modify "$con" \
+    ipv4.method shared ipv4.addresses "${hotspot_ip}/24" >/dev/null 2>&1 &&
+    nmcli connection up "$con" >/dev/null 2>&1 || true
+
+  # The shared-mode address (now pinned to $hotspot_ip, but read it back rather
+  # than assume it — this is the address the phone will be told to talk to).
   for tries in 1 2 3 4 5; do
     ip="$(nmcli -g IP4.ADDRESS device show "$iface" 2>/dev/null | head -n1 | cut -d/ -f1)"
     [ -n "$ip" ] && break
@@ -431,8 +443,10 @@ if [ "$hotspot" -eq 1 ]; then
   echo
   echo "Hotspot up — this laptop IS the network."
   echo "  join on the phone   Wi-Fi '$hotspot_ssid', password '$hotspot_pass'"
-  echo "  controller          http://${ap_ip}:${controller_port}"
-  echo "  relay it talks to   ${controller_relay}"
+  echo "  laptop address      ${ap_ip}   (pinned — the app's frozen relay host)"
+  echo "  controller UI       http://${ap_ip}:${controller_port}"
+  echo "  relay / phone app   ${controller_relay}"
+  echo "  test it yourself    curl ${controller_relay}/health   (or open it in a browser)"
   echo "  backend             offline (HF_HUB_OFFLINE=1)"
   echo "  phone mic           disabled — needs HTTPS; take control works"
   echo

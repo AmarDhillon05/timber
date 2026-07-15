@@ -1,18 +1,18 @@
-// Silver-wood theme (PRD): warm walnut surfaces with brushed-silver controls,
+// Silver theme (PRD): cool brushed-pewter surfaces with brushed-silver controls,
 // like the face of a hi-fi amplifier. Plain constants on purpose — no theming
 // library or context; these apps have no light/dark switching.
 //
 // NOTE: mobile/src/theme.ts is a copy of this file (the apps are separate
 // npm packages with no shared workspace). Keep the two in sync.
 export const theme = {
-  // Wood surfaces, dark → deep.
-  surface: '#2a1c11', // screen backgrounds (walnut)
-  surfaceDeep: '#170e07', // camera / preview wells
-  card: '#3e2d1b', // cards, inputs, secondary buttons
-  cardDeep: '#221507', // dropdown menus, tooltips, toasts
-  border: '#57422a', // hairlines on wood
+  // Pewter surfaces, dark → deep.
+  surface: '#2b2e33', // screen backgrounds (dark brushed pewter)
+  surfaceDeep: '#181a1e', // camera / preview wells
+  card: '#3a3e44', // cards, inputs, secondary buttons
+  cardDeep: '#202329', // dropdown menus, tooltips, toasts
+  border: '#4e535b', // hairlines on pewter
 
-  // Text on wood. Cream, dimming toward the surface tone.
+  // Text on pewter. Cream, dimming toward the surface tone — the one warm note.
   text: '#f3e8d2',
   textSoft: '#ddccae',
   textMuted: '#b39c78',

@@ -11,7 +11,8 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { importVideo, type ImportStage } from '../media/importVideo';
 import { listProjects, openProject, type SavedProject } from '../media/savedProjects';
-import { theme } from '../theme';
+import { Badge, LcdLabel, LcdPanel, LcdValue, MetalPlate, WoodSurface } from '../components/material';
+import { radius, theme } from '../theme';
 
 // null = idle. 'opening' covers the gap between tapping and the picker
 // returning; 'copying' mirrors importVideo's one awaited stage. Decode happens
@@ -80,12 +81,16 @@ export default function UploadScreen({
   const processing = progress !== null;
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Timber</Text>
+    <WoodSurface style={styles.container}>
+      {/* The name is engraved on a plate bolted to the chassis, the way a deck
+          wears its badge — not set as a web headline. */}
+      <MetalPlate style={styles.namePlate} r={radius.sm}>
+        <Text style={styles.title}>TIMBER</Text>
+      </MetalPlate>
 
       {processing ? (
         <View style={styles.processing}>
-          <ActivityIndicator color={theme.text} />
+          <ActivityIndicator color={theme.lcdOn} />
           <Text style={styles.processingText}>
             {progress ? PROGRESS_LABEL[progress] : ''}
           </Text>
@@ -96,13 +101,19 @@ export default function UploadScreen({
             Upload a video to start editing. Pick several to layer extra audio
             tracks — the first one provides the video.
           </Text>
-          <Pressable style={styles.button} onPress={onPick}>
-            <Text style={styles.buttonText}>Choose video(s)</Text>
+          <Pressable onPress={onPick}>
+            {({ pressed }) => (
+              <MetalPlate style={styles.button} inset={pressed} r={radius.md}>
+                <Text style={styles.buttonText}>Choose video(s)</Text>
+              </MetalPlate>
+            )}
           </Pressable>
 
           {savedProjectsSupported && (
             <View style={styles.saved}>
-              <Text style={styles.savedHeading}>Saved projects</Text>
+              <Badge tone="steel" style={styles.savedBadge}>
+                Saved projects
+              </Badge>
               {listError ? (
                 <Text style={styles.savedError}>{listError}</Text>
               ) : projects === null ? (
@@ -113,108 +124,134 @@ export default function UploadScreen({
                   here.
                 </Text>
               ) : (
-                <ScrollView style={styles.savedList}>
-                  {projects.map((project) => (
-                    <Pressable
-                      key={project.dir}
-                      style={styles.savedRow}
-                      onPress={() => onOpen(project.dir)}
-                    >
-                      <Text style={styles.savedName} numberOfLines={1}>
-                        {project.name}
-                      </Text>
-                      <Text style={styles.savedMeta}>
-                        {project.tracks} track{project.tracks === 1 ? '' : 's'}
-                        {'  ·  '}
-                        {savedAtLabel(project.savedAt)}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
+                // The list is one pane of glass with the takes lit on it, rather
+                // than a stack of separate cards floating on the wood.
+                <LcdPanel style={styles.savedGlass}>
+                  <ScrollView style={styles.savedList}>
+                    {projects.map((project) => (
+                      <Pressable
+                        key={project.dir}
+                        style={styles.savedRow}
+                        onPress={() => onOpen(project.dir)}
+                      >
+                        {/* Track count reads as a lit figure — the number is the
+                            fact you scan the list for. */}
+                        <LcdValue size={19} style={styles.savedCount}>
+                          {String(project.tracks)}
+                        </LcdValue>
+                        <View style={styles.savedText}>
+                          <Text style={styles.savedName} numberOfLines={1}>
+                            {project.name}
+                          </Text>
+                          <LcdLabel>
+                            {project.tracks === 1 ? 'track' : 'tracks'}
+                            {'  ·  '}
+                            {savedAtLabel(project.savedAt)}
+                          </LcdLabel>
+                        </View>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </LcdPanel>
               )}
             </View>
           )}
 
           {onRecord && (
             <Pressable style={styles.recordLink} onPress={onRecord}>
-              <Text style={styles.recordLinkText}>Record a take</Text>
+              <Text style={styles.recordLinkText}>Record a take -&gt;</Text>
             </Pressable>
           )}
         </>
       )}
 
       <StatusBar style="light" />
-    </View>
+    </WoodSurface>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: theme.surface,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
-    gap: 24,
+    gap: 22,
+  },
+  namePlate: {
+    paddingHorizontal: 22,
+    paddingVertical: 7,
   },
   title: {
-    color: theme.textMuted,
-    fontSize: 20,
-    fontWeight: '600',
-    letterSpacing: 2,
-    textTransform: 'uppercase',
+    // Engraved, not printed: dark letters cut into the metal, with a hairline of
+    // light catching the bottom of each stroke.
+    color: '#20242a',
+    fontSize: 19,
+    fontWeight: '800',
+    letterSpacing: 6,
+    textShadowColor: 'rgba(255,255,255,0.35)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 0,
   },
   subtitle: {
     color: theme.textSoft,
     fontSize: 16,
     textAlign: 'center',
+    maxWidth: 460,
+    lineHeight: 23,
   },
   button: {
-    paddingHorizontal: 28,
+    paddingHorizontal: 30,
     paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: theme.accent,
   },
   buttonText: {
-    color: theme.onAccent,
-    fontSize: 16,
-    fontWeight: '600',
+    color: '#20242a',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textShadowColor: 'rgba(255,255,255,0.30)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 0,
   },
   saved: {
     width: '100%',
     maxWidth: 460,
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
-  savedHeading: {
-    color: theme.textFaint,
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
+  savedBadge: {
+    // Badge defaults to hugging its left edge; this one heads a centred column.
+    alignSelf: 'center',
+  },
+  savedGlass: {
+    alignSelf: 'stretch',
+    paddingVertical: 4,
   },
   savedList: {
     alignSelf: 'stretch',
     maxHeight: 220,
   },
   savedRow: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.card,
-    gap: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    // Hairlines between takes, like rules etched on the display.
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(159,219,224,0.08)',
+  },
+  savedCount: {
+    minWidth: 26,
+    alignItems: 'flex-end',
+  },
+  savedText: {
+    flex: 1,
+    gap: 2,
   },
   savedName: {
     color: theme.text,
     fontSize: 15,
     fontWeight: '600',
-  },
-  savedMeta: {
-    color: theme.textFaint,
-    fontSize: 13,
   },
   savedEmpty: {
     color: theme.textFaint,
@@ -233,6 +270,7 @@ const styles = StyleSheet.create({
     color: theme.textMuted,
     fontSize: 15,
     fontWeight: '500',
+    letterSpacing: 0.3,
   },
   processing: {
     alignItems: 'center',

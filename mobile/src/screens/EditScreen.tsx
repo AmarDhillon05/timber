@@ -28,13 +28,22 @@ import { saveProject } from '../media/savedProjects';
 import { uriByteSize, formatBytes } from '../media/fileSize';
 import { suggestBlanket } from '../ai/suggestBlanket';
 import { InferenceError } from '../ai/inferenceApi';
+import {
+  Badge,
+  LcdLabel,
+  LcdPanel,
+  LcdValue,
+  MetalPlate,
+  StepCells,
+  WoodSurface,
+} from '../components/material';
 import { BlanketKnob } from '../components/BlanketKnob';
 import {
   BLANKET_TERM_KEYS,
   BLANKET_TERMS,
   CATEGORY_ORDER,
 } from '../dsp/blanketTerms';
-import { theme } from '../theme';
+import { theme, radius } from '../theme';
 
 // Below this width we stack (video over sliders); at or above it we go
 // side-by-side (video left, sliders right).
@@ -264,24 +273,38 @@ export default function EditScreen() {
   usePreview(player);
 
   return (
-    <View style={styles.container}>
+    <WoodSurface style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.name} numberOfLines={1}>
-          {videoName}
-        </Text>
+        {/* The loaded project reads out on glass — it's the one thing on this
+            screen that says WHAT you're working on, so it gets the display. */}
+        <LcdPanel style={styles.namePanel}>
+          <Badge tone="steel">Project</Badge>
+          <Text style={styles.name} numberOfLines={1}>
+            {videoName}
+          </Text>
+        </LcdPanel>
         <Pressable onPress={clear} hitSlop={8}>
-          <Text style={styles.close}>Close</Text>
+          {({ pressed }) => (
+            <MetalPlate style={styles.close} inset={pressed} r={radius.sm}>
+              <Text style={styles.closeText}>Close</Text>
+            </MetalPlate>
+          )}
         </Pressable>
       </View>
 
       <View style={[styles.body, wide && styles.bodyWide]}>
         <View style={wide ? { width: videoWidth } : styles.videoColStacked}>
-          <VideoView
-            style={[styles.video, wide ? { width: videoWidth } : undefined]}
-            player={player}
-            contentFit="contain"
-            nativeControls
-          />
+          {/* The video sits in a well milled INTO the chassis: dark at its top
+              lip, catching light along the bottom. Same inversion as every other
+              recessed thing here. */}
+          <View style={styles.videoWell}>
+            <VideoView
+              style={[styles.video, wide ? { width: videoWidth } : undefined]}
+              player={player}
+              contentFit="contain"
+              nativeControls
+            />
+          </View>
 
           {/* Track list under the video: one row per track — a small "m" mute
               button plus the name (mute = the track's volume fader slammed to
@@ -291,19 +314,25 @@ export default function EditScreen() {
               const active = t.id === activeTrackId;
               return (
                 <View key={t.id} style={styles.trackRow}>
+                  {/* A mute key, milled: it presses IN when the track is muted,
+                      so the state is legible from the light alone. */}
                   <Pressable
                     onPress={() => setTrackValue(t.id, 'volume', t.muted ? 0 : -1)}
                     hitSlop={4}
-                    style={[styles.muteBtn, t.muted && styles.muteBtnOn]}
                   >
-                    <Text style={[styles.muteBtnText, t.muted && styles.muteBtnTextOn]}>
-                      m
-                    </Text>
+                    <MetalPlate style={styles.muteBtn} inset={t.muted} r={radius.sm}>
+                      <Text style={[styles.muteBtnText, t.muted && styles.muteBtnTextOn]}>
+                        m
+                      </Text>
+                    </MetalPlate>
                   </Pressable>
                   <Pressable
                     onPress={() => setActiveTrack(t.id)}
                     style={[styles.trackBtn, active && styles.trackBtnActive]}
                   >
+                    {/* The selected channel lights its edge — a strip glowing on
+                        the console, not a filled rectangle. */}
+                    {active && <View style={styles.trackActiveEdge} />}
                     <Text
                       style={[styles.trackBtnText, active && styles.trackBtnTextActive]}
                       numberOfLines={1}
@@ -360,8 +389,12 @@ export default function EditScreen() {
                     {savingProject ? 'Saving…' : 'Save'}
                   </Text>
                 </Pressable>
-                <Pressable onPress={onExport} hitSlop={8} style={styles.exportButton}>
-                  <Text style={styles.exportText}>Export ↓</Text>
+                <Pressable onPress={onExport} hitSlop={8}>
+                  {({ pressed }) => (
+                    <MetalPlate style={styles.exportButton} inset={pressed} r={radius.sm}>
+                      <Text style={styles.exportText}>Export {'↓'}</Text>
+                    </MetalPlate>
+                  )}
                 </Pressable>
               </View>
             )}
@@ -394,18 +427,23 @@ export default function EditScreen() {
                     onPressIn={() => pressTo(1)}
                     onPressOut={() => pressTo(0)}
                     disabled={suggesting || backendStatus === 'offline'}
-                    style={[
-                      styles.suggestButton,
-                      (suggesting || backendStatus === 'offline') && styles.suggestButtonDisabled,
-                    ]}
                   >
-                    {suggesting ? (
-                      <ActivityIndicator color={theme.onAccent} size="small" />
-                    ) : (
-                      <Text style={styles.suggestButtonText}>
-                        {backendStatus === 'checking' ? 'Checking…' : 'Suggest'}
-                      </Text>
-                    )}
+                    <MetalPlate
+                      style={[
+                        styles.suggestButton,
+                        (suggesting || backendStatus === 'offline') &&
+                          styles.suggestButtonDisabled,
+                      ]}
+                      r={radius.sm}
+                    >
+                      {suggesting ? (
+                        <ActivityIndicator color="#20242a" size="small" />
+                      ) : (
+                        <Text style={styles.suggestButtonText}>
+                          {backendStatus === 'checking' ? 'Checking…' : 'Suggest'}
+                        </Text>
+                      )}
+                    </MetalPlate>
                   </Pressable>
                 </Animated.View>
               </View>
@@ -429,9 +467,11 @@ export default function EditScreen() {
             <View style={decoding && styles.locked}>
               {CATEGORY_ORDER.map((category) => (
                 <View key={category} style={styles.categoryRow}>
-                  <Text style={styles.categoryLabel} numberOfLines={2}>
-                    {category}
-                  </Text>
+                  {/* Stamped chip in the gutter, like the section legends
+                      silk-screened down the side of a console. */}
+                  <View style={styles.categoryLabel}>
+                    <Badge tone="steel">{category}</Badge>
+                  </View>
                   <View style={styles.categoryKnobs}>
                     {BLANKET_TERM_KEYS.filter(
                       (key) => BLANKET_TERMS[key].category === category,
@@ -473,7 +513,7 @@ export default function EditScreen() {
       <KnobTooltip />
 
       <StatusBar style="light" />
-    </View>
+    </WoodSurface>
   );
 }
 
@@ -588,18 +628,29 @@ function UsageSummary() {
   const knobs = Object.keys(usage.blanket).length;
   const effects = Object.values(usage.effect).reduce((a, b) => a + b, 0);
   if (knobs === 0) return null;
+
+  // One cell per Blanket term, in the same order as the knobs below it, lit when
+  // the term is engaged. The count still reads out — but the BANK is what you
+  // actually glance at, because it shows which regions of the strip you've been
+  // working in without anyone having to read a number.
+  const cells = BLANKET_TERM_KEYS.map((key) => usage.blanket[key] !== undefined);
+
   return (
-    <Text style={styles.usageText}>
-      {knobs} {knobs === 1 ? 'knob' : 'knobs'} · {effects}{' '}
-      {effects === 1 ? 'effect' : 'effects'} applied
-    </Text>
+    <LcdPanel style={styles.usagePanel}>
+      <StepCells cells={cells} height={10} />
+      <View style={styles.usageRow}>
+        <LcdValue size={13}>{String(knobs)}</LcdValue>
+        <LcdLabel>{knobs === 1 ? 'knob' : 'knobs'}</LcdLabel>
+        <LcdValue size={13}>{String(effects)}</LcdValue>
+        <LcdLabel>{effects === 1 ? 'effect' : 'effects'} applied</LcdLabel>
+      </View>
+    </LcdPanel>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: theme.surface,
+    // No backgroundColor — WoodSurface is the background now, board and all.
     paddingTop: 56,
     paddingHorizontal: 20,
   },
@@ -608,18 +659,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 12,
+    gap: 12,
+  },
+  namePanel: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
   },
   name: {
     flex: 1,
-    color: theme.text,
-    fontSize: 18,
+    color: theme.lcdOn,
+    fontSize: 16,
     fontWeight: '700',
-    marginRight: 12,
+    letterSpacing: 0.4,
   },
   close: {
-    color: theme.textMuted,
-    fontSize: 16,
-    fontWeight: '600',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  closeText: {
+    color: '#20242a',
+    fontSize: 13,
+    fontWeight: '700',
+    textShadowColor: 'rgba(255,255,255,0.30)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 0,
   },
   body: {
     flex: 1,
@@ -632,20 +699,35 @@ const styles = StyleSheet.create({
   videoColStacked: {
     width: '100%',
   },
+  // The well the screen is sunk into: dark along its top lip, a sliver of light
+  // along the bottom, exactly inverting a raised plate.
+  videoWell: {
+    borderRadius: 14,
+    padding: 3,
+    backgroundColor: theme.surfaceDeep,
+    borderWidth: 1,
+    borderTopColor: '#000',
+    borderLeftColor: '#08090b',
+    borderRightColor: '#08090b',
+    borderBottomColor: 'rgba(255,255,255,0.09)',
+  },
   video: {
     width: '100%',
     aspectRatio: 16 / 9,
     borderRadius: 12,
     backgroundColor: theme.surfaceDeep,
   },
-  // The whole control column sits in one bordered panel (mockup: a single
-  // outlined container with a brownish border — theme.border is the walnut
-  // hairline).
+  // The control column is a BAY routed into the board — not a card floating on
+  // it. Same recessed light as the video well, so the two read as one chassis.
   controls: {
     flex: 1,
     borderWidth: 1,
-    borderColor: theme.border,
+    borderTopColor: '#0e1013',
+    borderLeftColor: '#15181c',
+    borderRightColor: '#15181c',
+    borderBottomColor: 'rgba(255,255,255,0.07)',
     borderRadius: 16,
+    backgroundColor: 'rgba(6,8,11,0.35)',
     paddingHorizontal: 14,
     paddingTop: 12,
     paddingBottom: 4,
@@ -663,37 +745,50 @@ const styles = StyleSheet.create({
   muteBtn: {
     width: 34,
     height: 34,
-    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.card,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  muteBtnOn: {
-    backgroundColor: theme.dangerDeep,
-    borderColor: theme.dangerBorder,
   },
   muteBtnText: {
-    color: theme.textMuted,
+    color: '#20242a',
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
+    textShadowColor: 'rgba(255,255,255,0.30)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 0,
   },
+  // A muted key is pressed IN (MetalPlate inset) and its letter goes red — the
+  // shape tells you it's down, the colour tells you what down MEANS.
   muteBtnTextOn: {
-    color: theme.text,
+    color: theme.danger,
+    textShadowColor: 'transparent',
   },
   trackBtn: {
     flex: 1,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: theme.card,
+    backgroundColor: 'rgba(12,14,18,0.55)',
     borderWidth: 1,
     borderColor: theme.border,
+    overflow: 'hidden',
   },
+  // Selected = a lit strip down the leading edge. Filling the whole row with
+  // silver (the old look) shouted louder than the knobs it was meant to feed.
   trackBtnActive: {
-    backgroundColor: theme.accent,
-    borderColor: theme.accent,
+    borderColor: theme.metalSide,
+    backgroundColor: 'rgba(44,50,60,0.55)',
+  },
+  trackActiveEdge: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    backgroundColor: theme.cellActive,
+    shadowColor: theme.lcdOn,
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
   },
   trackBtnText: {
     color: theme.textSoft,
@@ -701,8 +796,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   trackBtnTextActive: {
-    color: theme.onAccent,
-    fontWeight: '600',
+    color: theme.text,
+    fontWeight: '700',
   },
   trackSizeText: {
     color: theme.textFaint,
@@ -712,8 +807,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   trackSizeTextActive: {
-    color: theme.onAccent,
-    opacity: 0.75,
+    color: theme.textMuted,
   },
   controlsHeader: {
     flexDirection: 'row',
@@ -783,19 +877,25 @@ const styles = StyleSheet.create({
   exportButton: {
     paddingHorizontal: 14,
     paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: theme.accent,
   },
   exportText: {
-    color: theme.onAccent,
-    fontSize: 14,
-    fontWeight: '700',
+    color: '#20242a',
+    fontSize: 13,
+    fontWeight: '800',
+    textShadowColor: 'rgba(255,255,255,0.30)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 0,
   },
-  usageText: {
-    color: theme.textFaint,
-    fontSize: 12,
+  usagePanel: {
     marginTop: 8,
-    fontVariant: ['tabular-nums'],
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 5,
+  },
+  usageRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 5,
   },
   suggestBlock: {
     marginTop: 10,
@@ -808,13 +908,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  // The hint field is a slot cut into the bay, not a card on top of it.
   promptInput: {
     flex: 1,
     height: 40,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.card,
+    borderTopColor: '#08090b',
+    borderLeftColor: '#0f1114',
+    borderRightColor: '#0f1114',
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(6,7,10,0.55)',
     color: theme.text,
     paddingHorizontal: 12,
     fontSize: 14,
@@ -822,23 +926,26 @@ const styles = StyleSheet.create({
   suggestButton: {
     height: 40,
     paddingHorizontal: 18,
-    borderRadius: 10,
-    backgroundColor: theme.success,
     alignItems: 'center',
     justifyContent: 'center',
+    // Metal like every other key, but it keeps its green halo: Suggest is the
+    // one control that reaches outside the machine, and that's worth a tell.
     shadowColor: theme.success,
-    shadowOpacity: 0.45,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
     elevation: 8,
   },
   suggestButtonDisabled: {
     opacity: 0.4,
   },
   suggestButtonText: {
-    color: theme.onAccent,
+    color: '#20242a',
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
+    textShadowColor: 'rgba(255,255,255,0.30)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 0,
   },
   scroll: {
     flex: 1,
@@ -857,15 +964,12 @@ const styles = StyleSheet.create({
     marginTop: 6,
     gap: 4,
   },
+  // Now a gutter holding a stamped chip rather than bare type. Same width, so
+  // the knob grid to its right doesn't move.
   categoryLabel: {
     width: 58,
     paddingTop: 20,
-    color: theme.textFaint,
-    fontSize: 9,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    textAlign: 'right',
+    alignItems: 'flex-end',
   },
   categoryKnobs: {
     flex: 1,

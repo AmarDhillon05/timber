@@ -101,6 +101,13 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Liveness probe. Anything that gets a 200 here has reached the relay — used
+  // to sanity-check the pinned hotspot address from a phone browser (or curl)
+  // before bothering to pair.
+  if (req.method === 'GET' && pathname === '/health') {
+    return sendJson(res, 200, { ok: true, rooms: rooms.size });
+  }
+
   // Desktop: mint a pairing code + token.
   if (req.method === 'POST' && pathname === '/pair/request') {
     const token = randomUUID();

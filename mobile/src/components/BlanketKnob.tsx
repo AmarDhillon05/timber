@@ -3,6 +3,7 @@ import { Animated, PanResponder, StyleSheet, Text, View } from 'react-native';
 import { useSession, activeValues, activeTrack } from '../state/session';
 import { useHotKnob } from '../state/hotKnob';
 import { BLANKET_TERMS, type BlanketTerm } from '../dsp/blanketTerms';
+import { KnurledDial, LcdPanel, LcdValue } from './material';
 import { theme } from '../theme';
 
 const SWEEP = 135; // degrees from center to each extreme (−1 → −135°, +1 → +135°)
@@ -108,32 +109,26 @@ function BlanketKnobBase({ term, disabled }: { term: BlanketTerm; disabled: bool
           active && { shadowColor: glow, shadowOpacity: 0.7, shadowRadius: 16 },
         ]}
       >
-        <View
-          style={[
-            styles.knob,
-            disabled && styles.knobDisabled,
-            active && { borderColor: glow },
-          ]}
-        >
-          {/* Top-light sheen makes the face read as a raised dome. */}
-          <View style={styles.sheen} pointerEvents="none" />
-
-          <View
-            style={[styles.pointerBox, { transform: [{ rotate: `${value * SWEEP}deg` }] }]}
-            pointerEvents="none"
-          >
-            <View style={[styles.pointer, active && { backgroundColor: glow }]} />
-          </View>
-
-          {/* Recessed centre hub. */}
-          <View style={styles.hub} pointerEvents="none" />
-        </View>
+        <KnurledDial
+          size={SIZE}
+          value={value}
+          sweep={SWEEP}
+          glow={glow}
+          active={active}
+          disabled={disabled}
+        />
       </Animated.View>
 
       <Text style={styles.label} numberOfLines={1}>
         {label}
       </Text>
-      <Text style={[styles.value, active && { color: glow }]}>{value.toFixed(2)}</Text>
+      {/* The value reads out on glass, like the trim display on a channel strip.
+          Fixed width so a row of knobs stays on its grid as the numbers change. */}
+      <LcdPanel style={styles.readout}>
+        <LcdValue size={11} dim={disabled}>
+          {value >= 0 ? `+${value.toFixed(2)}` : value.toFixed(2)}
+        </LcdValue>
+      </LcdPanel>
     </View>
   );
 }
@@ -168,69 +163,17 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 9 },
     elevation: 12,
   },
-  knob: {
-    width: SIZE,
-    height: SIZE,
-    borderRadius: SIZE / 2,
-    backgroundColor: theme.steelFace,
-    borderWidth: 2,
-    // Per-edge rim light: bright at the top, dark at the bottom, so the circle
-    // looks like a bevelled dome catching light from above.
-    borderTopColor: theme.steelRimLight,
-    borderLeftColor: theme.steelRimSide,
-    borderRightColor: theme.steelRimSide,
-    borderBottomColor: theme.steelRimDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  knobDisabled: {
-    opacity: 0.4,
-  },
-  sheen: {
-    position: 'absolute',
-    top: 3,
-    width: SIZE * 0.74,
-    height: SIZE * 0.5,
-    borderRadius: SIZE,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-  },
-  pointerBox: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    paddingTop: 5,
-  },
-  pointer: {
-    width: 4,
-    height: 15,
-    borderRadius: 2,
-    backgroundColor: theme.steelPointer,
-  },
-  hub: {
-    position: 'absolute',
-    width: HUB,
-    height: HUB,
-    borderRadius: HUB / 2,
-    backgroundColor: theme.steelHub,
-    borderWidth: 1,
-    borderTopColor: theme.steelHubDark,
-    borderBottomColor: theme.steelHubLight,
-    borderLeftColor: theme.steelHubSide,
-    borderRightColor: theme.steelHubSide,
-  },
   label: {
     color: theme.textSoft,
     fontSize: 12,
-    marginTop: 4,
+    marginTop: 6,
     textAlign: 'center',
   },
-  value: {
-    color: theme.textFaint,
-    fontSize: 11,
-    fontVariant: ['tabular-nums'],
+  readout: {
+    marginTop: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    minWidth: 52,
+    alignItems: 'center',
   },
 });
