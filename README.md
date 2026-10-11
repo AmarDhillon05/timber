@@ -32,6 +32,15 @@ start it alongside the app, or use the run-dev scripts below which do it for
 you. On Windows run Electron on the Windows host (not WSL) so SMTC
 media-session control works.
 
+## Tests
+
+```bash
+cd mobile && npm test   # DSP checks: FFT round-trip, compressor, gate, saturation, width, spectral gate
+```
+
+These run in CI on every push. To try the inference models on your own clip, run
+`python test_inference.py <file> [ast|beats|clap]`.
+
 ## Run the inference API
 
 ```bash

@@ -21,6 +21,7 @@
   },
   "scripts": {
     "start": "expo start",
+    "test": "npx --yes tsx@4.19.2 __dsptest__/run.ts",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "apple": "expo start --ios",
