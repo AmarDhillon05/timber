@@ -39,3 +39,6 @@ saved_data/
 
 # scripts/run-dev.sh headless fallback logs
 scripts/logs/
+
+# Hugging Face xet download logs
+xet/

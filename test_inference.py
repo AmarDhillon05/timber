@@ -2,13 +2,13 @@
 Quick local test for the blanket inference logic.
 
 Runs a model directly (no HTTP server) on an audio file and prints the
-suggested amount for every blanket term. The input here is a .mov video, so
-we extract its audio track to a temp WAV with ffmpeg first (soundfile/
-libsndfile cannot read .mov containers).
+suggested amount for every blanket term. Any audio or video container works:
+the audio track is extracted to a temp WAV with ffmpeg first (soundfile/
+libsndfile cannot read containers like .mov).
 
 Usage:
-    .venv/bin/python test_inference.py            # default model = clap
-    .venv/bin/python test_inference.py ast        # or: beats
+    .venv/bin/python test_inference.py clip.mov          # default model = clap
+    .venv/bin/python test_inference.py clip.mov ast      # or: beats
 """
 
 import json
@@ -19,8 +19,6 @@ from pathlib import Path
 
 from inference import suggest_blanket_amounts
 
-# Windows path "C:\\Users\\adhil\\Downloads\\IMG_9928.mov" -> WSL mount path.
-SOURCE = "/mnt/c/Users/adhil/Downloads/IMG_9928.mov"
 
 
 def extract_audio(src: str) -> str:
@@ -43,13 +41,17 @@ def extract_audio(src: str) -> str:
 
 
 def main() -> None:
-    model = sys.argv[1] if len(sys.argv) > 1 else "clap"
+    if len(sys.argv) < 2:
+        sys.exit("usage: python test_inference.py <audio-or-video-file> [ast|beats|clap]")
 
-    if not Path(SOURCE).exists():
-        sys.exit(f"Source file not found: {SOURCE}")
+    source = sys.argv[1]
+    model = sys.argv[2] if len(sys.argv) > 2 else "clap"
 
-    print(f"Extracting audio from {SOURCE} ...")
-    wav = extract_audio(SOURCE)
+    if not Path(source).exists():
+        sys.exit(f"Source file not found: {source}")
+
+    print(f"Extracting audio from {source} ...")
+    wav = extract_audio(source)
 
     print(f"Running '{model}' inference (first run downloads model weights) ...")
     suggestions = suggest_blanket_amounts(wav, model=model)
